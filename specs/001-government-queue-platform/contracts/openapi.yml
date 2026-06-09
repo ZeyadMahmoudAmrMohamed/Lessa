@@ -1,0 +1,566 @@
+openapi: "3.1.0"
+info:
+  title: Lessa? Government Queue Platform API
+  version: "1.0.0"
+  description: |
+    REST API for the Lessa? queue tracking platform.
+    All write operations require a Bearer JWT issued by Supabase Auth.
+    The role claim is embedded in app_metadata.role.
+  contact:
+    name: Lessa? Team
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://your-backend.railway.app
+    description: Production
+
+tags:
+  - name: System
+  - name: Auth
+  - name: Services
+  - name: Citizen
+  - name: Staff
+  - name: Supervisor
+  - name: Admin
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+        details: {}
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [citizen, staff, supervisor, admin] }
+        name: { type: string }
+
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+
+    Service:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name_ar: { type: string }
+        name_en: { type: string }
+        estimated_duration_minutes: { type: integer }
+        is_active: { type: boolean }
+
+    PublicService:
+      allOf:
+        - $ref: '#/components/schemas/Service'
+        - type: object
+          properties:
+            active_windows: { type: integer }
+            queue_size: { type: integer }
+            congestion: { type: string, enum: [NONE, LOW, MEDIUM, HIGH] }
+            estimated_wait_minutes: { type: integer, nullable: true }
+
+    Ticket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        queue_number: { type: integer }
+        status:
+          type: string
+          enum: [waiting, active, done, skipped, no_show, cancelled]
+        booked_at: { type: string, format: date-time }
+        called_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+
+    ActiveTicket:
+      allOf:
+        - $ref: '#/components/schemas/Ticket'
+        - type: object
+          properties:
+            service:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                name_ar: { type: string }
+                name_en: { type: string }
+            position: { type: integer }
+            estimated_wait_minutes: { type: integer }
+            queue_total: { type: integer }
+            window_number: { type: integer, nullable: true }
+
+    Window:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer }
+        status: { type: string, enum: [open, closed] }
+        assigned_staff:
+          nullable: true
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        service:
+          type: object
+          properties:
+            name_ar: { type: string }
+            name_en: { type: string }
+        tickets_served_today: { type: integer }
+        current_queue_size: { type: integer }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        message_ar: { type: string }
+        message_en: { type: string }
+        read: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+paths:
+
+  # ─── System ──────────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        "200":
+          description: API and DB are healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  db: { type: string }
+                  timestamp: { type: string }
+        "503":
+          description: DB unreachable
+
+  # ─── Auth ─────────────────────────────────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new citizen account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name, phone, password]
+              properties:
+                full_name: { type: string }
+                phone: { type: string, example: "01012345678" }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201":
+          description: Registered — returns JWT
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400": { description: Validation error }
+        "409": { description: Phone already registered }
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with phone and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "401": { description: Invalid credentials }
+
+  # ─── Services (Public) ───────────────────────────────────────────────────────
+  /api/services/public:
+    get:
+      tags: [Services]
+      summary: List active services with live congestion data (no auth required)
+      responses:
+        "200":
+          description: Service list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items: { $ref: '#/components/schemas/PublicService' }
+
+  # ─── Services (Admin) ────────────────────────────────────────────────────────
+  /api/services:
+    get:
+      tags: [Admin, Services]
+      summary: Admin — list all services including inactive
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: All services
+    post:
+      tags: [Admin, Services]
+      summary: Admin — create a service
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name_ar, name_en, estimated_duration_minutes]
+              properties:
+                name_ar: { type: string }
+                name_en: { type: string }
+                estimated_duration_minutes: { type: integer }
+      responses:
+        "201": { description: Service created }
+
+  /api/services/{id}:
+    patch:
+      tags: [Admin, Services]
+      summary: Admin — update or deactivate a service
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name_ar: { type: string }
+                name_en: { type: string }
+                estimated_duration_minutes: { type: integer }
+                is_active: { type: boolean }
+      responses:
+        "200": { description: Updated service }
+        "404": { description: Service not found }
+
+  # ─── Citizen ─────────────────────────────────────────────────────────────────
+  /api/citizen/ticket/active:
+    get:
+      tags: [Citizen]
+      summary: Get current active ticket with queue position
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Active ticket or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket:
+                    oneOf:
+                      - { $ref: '#/components/schemas/ActiveTicket' }
+                      - { type: 'null' }
+
+  /api/citizen/tickets:
+    post:
+      tags: [Citizen]
+      summary: Book a queue slot
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id]
+              properties:
+                service_id: { type: string, format: uuid }
+      responses:
+        "201": { description: Ticket booked }
+        "409": { description: Duplicate booking }
+        "422": { description: No active windows }
+
+  /api/citizen/tickets/{id}:
+    delete:
+      tags: [Citizen]
+      summary: Cancel a waiting ticket
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Cancelled }
+        "404": { description: Ticket not found or already processed }
+
+  /api/citizen/tickets/history:
+    get:
+      tags: [Citizen]
+      summary: Get recent ticket history
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 5 }
+      responses:
+        "200": { description: Ticket history }
+
+  /api/citizen/notifications:
+    get:
+      tags: [Citizen]
+      summary: List in-app notifications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: unread
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  unread_count: { type: integer }
+
+  /api/citizen/notifications/read-all:
+    patch:
+      tags: [Citizen]
+      summary: Mark all notifications as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Updated count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+
+  # ─── Staff ───────────────────────────────────────────────────────────────────
+  /api/staff/window/{windowId}/queue:
+    get:
+      tags: [Staff]
+      summary: Get current queue for a window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: windowId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Window queue data }
+
+  /api/staff/window/{windowId}/next:
+    post:
+      tags: [Staff]
+      summary: Call the next ticket in the queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: windowId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Ticket now active }
+        "409": { description: Ticket already active on this window }
+        "422": { description: Queue empty }
+
+  /api/staff/tickets/{id}/status:
+    patch:
+      tags: [Staff]
+      summary: Mark active ticket as done, skipped, or no-show
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [done, skipped, no_show] }
+      responses:
+        "200": { description: Ticket updated }
+        "404": { description: No active ticket with this ID }
+
+  # ─── Supervisor ──────────────────────────────────────────────────────────────
+  /api/supervisor/branch/dashboard:
+    get:
+      tags: [Supervisor]
+      summary: Live branch overview — all windows + summary stats
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      active_windows: { type: integer }
+                      total_tickets_today: { type: integer }
+                      currently_waiting: { type: integer }
+                  windows:
+                    type: array
+                    items: { $ref: '#/components/schemas/Window' }
+
+  /api/supervisor/branch/summary:
+    get:
+      tags: [Supervisor]
+      summary: Daily ticket summary with hourly breakdown
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+      responses:
+        "200": { description: Daily summary }
+
+  /api/supervisor/windows/{id}:
+    patch:
+      tags: [Supervisor]
+      summary: Open or close a window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [open, closed] }
+      responses:
+        "200": { description: Window updated }
+
+  /api/supervisor/windows/{id}/assign:
+    patch:
+      tags: [Supervisor]
+      summary: Assign a staff member to a window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [staff_id]
+              properties:
+                staff_id: { type: string, format: uuid }
+      responses:
+        "200": { description: Staff assigned }
+        "422": { description: User is not a staff member }
+
+  # ─── Admin ───────────────────────────────────────────────────────────────────
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users with pagination and search
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: { type: array, items: {} }
+                  total: { type: integer }
+                  page: { type: integer }
+
+  /api/admin/users/{id}:
+    patch:
+      tags: [Admin]
+      summary: Update user role or active status
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [citizen, staff, supervisor, admin] }
+                is_active: { type: boolean }
+      responses:
+        "200": { description: User updated }
+        "404": { description: User not found }
+
+  /api/admin/reports:
+    get:
+      tags: [Admin]
+      summary: Platform-wide reports for a date range
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: start
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: end
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200": { description: Report data }
