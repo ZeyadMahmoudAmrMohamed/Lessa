@@ -23,7 +23,7 @@ export const ticketStatusSchema = z.object({
  *     tags: [Staff]
  *     security: [{ bearerAuth: [] }]
  */
-router.get('/window/:windowId/queue', authenticate, authorize('staff', 'supervisor'), getWindowQueue);
+router.get('/window/:windowId/queue', authenticate, authorize('staff', 'supervisor', 'admin'), getWindowQueue);
 
 /**
  * @openapi
@@ -33,7 +33,7 @@ router.get('/window/:windowId/queue', authenticate, authorize('staff', 'supervis
  *     tags: [Staff]
  *     security: [{ bearerAuth: [] }]
  */
-router.post('/window/:windowId/next', authenticate, authorize('staff', 'supervisor'), callNext);
+router.post('/window/:windowId/next', authenticate, authorize('staff', 'supervisor', 'admin'), callNext);
 
 /**
  * @openapi
@@ -43,6 +43,6 @@ router.post('/window/:windowId/next', authenticate, authorize('staff', 'supervis
  *     tags: [Staff]
  *     security: [{ bearerAuth: [] }]
  */
-router.patch('/tickets/:id/status', authenticate, authorize('staff', 'supervisor'), validate(ticketStatusSchema), updateTicketStatus);
+router.patch('/tickets/:id/status', authenticate, authorize('staff', 'supervisor', 'admin'), validate(ticketStatusSchema), updateTicketStatus);
 
 export default router;
