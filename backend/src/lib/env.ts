@@ -8,7 +8,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  SUPABASE_JWT_SECRET: z.string().min(1),
+  SUPABASE_JWT_SECRET: z.string().min(1).optional(),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   BRANCH_ID: z.string().uuid(),
 });

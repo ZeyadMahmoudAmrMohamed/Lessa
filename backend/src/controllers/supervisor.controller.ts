@@ -13,6 +13,15 @@ export async function getBranchDashboard(req: Request, res: Response, next: Next
   }
 }
 
+export async function createWindow(req: Request, res: Response, next: NextFunction) {
+  try {
+    const window = await svc.createWindow(req.body.service_id, req.body.number);
+    res.status(201).json({ window });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function updateWindow(req: Request, res: Response, next: NextFunction) {
   try {
     const window = await svc.updateWindow(req.params.id, req.body);

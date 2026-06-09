@@ -1,4 +1,5 @@
 import { getDb } from '../db/client.js';
+import { env } from '../lib/env.js';
 import { Errors } from '../lib/errors.js';
 
 export class SupervisorService {
@@ -58,6 +59,25 @@ export class SupervisorService {
     };
   }
 
+  async createWindow(serviceId: string, number: number) {
+    const { data, error } = await this.db
+      .from('windows')
+      .insert({
+        branch_id: env.BRANCH_ID,
+        service_id: serviceId,
+        number,
+        status: 'open',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') throw Errors.conflict('Window number already exists in this branch');
+      throw Errors.internal(error.message);
+    }
+    return data;
+  }
+
   async updateWindow(windowId: string, patch: { status?: 'open' | 'closed' }) {
     const { data, error } = await this.db
       .from('windows')
@@ -111,6 +131,13 @@ export class SupervisorService {
     const skipped = all.filter((t) => t.status === 'skipped').length;
     const noShow = all.filter((t) => t.status === 'no_show').length;
 
+    const servedWithTimes = all.filter((t) => t.status === 'done' && t.called_at && t.booked_at);
+    const avgWait = servedWithTimes.length > 0
+      ? +(servedWithTimes.reduce((sum, t) => {
+          return sum + (new Date(t.called_at!).getTime() - new Date(t.booked_at!).getTime()) / 60000;
+        }, 0) / servedWithTimes.length).toFixed(1)
+      : null;
+
     // Group by service
     const byService: Record<string, { name_ar: string; issued: number; served: number; no_show: number }> = {};
     for (const t of all) {
@@ -131,7 +158,7 @@ export class SupervisorService {
 
     return {
       date,
-      stats: { issued: all.length, served, skipped, no_show: noShow, avg_wait_minutes: null },
+      stats: { issued: all.length, served, skipped, no_show: noShow, avg_wait_minutes: avgWait },
       hourly: Object.entries(hourlyCounts)
         .sort()
         .map(([h, count]) => ({ hour: `${h}:00`, count })),

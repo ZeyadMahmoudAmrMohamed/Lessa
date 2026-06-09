@@ -5,12 +5,18 @@ import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
 import {
   getBranchDashboard,
+  createWindow,
   updateWindow,
   assignStaff,
   getDailySummary,
 } from '../controllers/supervisor.controller.js';
 
 const router = Router();
+
+export const createWindowSchema = z.object({
+  service_id: z.string().uuid(),
+  number: z.number().int().positive(),
+});
 
 export const updateWindowSchema = z.object({
   status: z.enum(['open', 'closed']).optional(),
@@ -29,6 +35,16 @@ export const assignStaffSchema = z.object({
  *     security: [{ bearerAuth: [] }]
  */
 router.get('/branch/dashboard', authenticate, authorize('supervisor', 'admin'), getBranchDashboard);
+
+/**
+ * @openapi
+ * /api/supervisor/windows:
+ *   post:
+ *     summary: Supervisor — create a new window
+ *     tags: [Supervisor]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.post('/windows', authenticate, authorize('supervisor', 'admin'), validate(createWindowSchema), createWindow);
 
 /**
  * @openapi

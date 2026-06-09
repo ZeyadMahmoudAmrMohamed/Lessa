@@ -52,13 +52,15 @@ export class NotificationsService {
     });
   }
 
-  async getForUser(userId: string, unreadOnly: boolean) {
+  async getForUser(userId: string, unreadOnly: boolean, page = 1, limit = 20) {
+    const offset = (page - 1) * limit;
+
     let query = this.db
       .from('notifications')
       .select('id, type, message_ar, message_en, read, created_at', { count: 'exact' })
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(30);
+      .range(offset, offset + limit - 1);
 
     if (unreadOnly) query = query.eq('read', false);
 
@@ -70,6 +72,8 @@ export class NotificationsService {
     return {
       notifications: data ?? [],
       unread_count: unreadCount,
+      total: count ?? 0,
+      page,
     };
   }
 

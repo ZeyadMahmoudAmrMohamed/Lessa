@@ -51,7 +51,7 @@ export class AdminService {
   async getReports({ start, end }: { start: string; end: string }) {
     const { data: tickets, error } = await this.db
       .from('tickets')
-      .select('status, booked_at, service_id, services(name_ar)')
+      .select('status, booked_at, called_at, completed_at, service_id, services(name_ar)')
       .gte('booked_at', `${start}T00:00:00Z`)
       .lte('booked_at', `${end}T23:59:59Z`);
 
@@ -59,6 +59,15 @@ export class AdminService {
 
     const all = tickets ?? [];
     const noShowCount = all.filter((t) => t.status === 'no_show').length;
+
+    // avg_wait_minutes: mean of (called_at - booked_at) for served tickets
+    const served = all.filter((t) => t.status === 'done' && t.called_at && t.booked_at);
+    const avgWait = served.length > 0
+      ? +(served.reduce((sum, t) => {
+          const wait = (new Date(t.called_at!).getTime() - new Date(t.booked_at!).getTime()) / 60000;
+          return sum + wait;
+        }, 0) / served.length).toFixed(1)
+      : null;
 
     // Daily bucketing
     const daily: Record<string, number> = {};
@@ -86,7 +95,7 @@ export class AdminService {
     return {
       summary: {
         total_transactions: all.length,
-        avg_wait_minutes: null,
+        avg_wait_minutes: avgWait,
         no_show_rate: all.length > 0 ? +(noShowCount / all.length).toFixed(2) : 0,
         peak_day: peakDay,
       },
