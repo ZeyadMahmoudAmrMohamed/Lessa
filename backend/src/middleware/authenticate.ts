@@ -1,15 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { env } from '../lib/env.js';
 import { Errors } from '../lib/errors.js';
-import { JwtPayload } from '../lib/types.js';
+
+const JWKS = createRemoteJWKSet(
+  new URL(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+);
 
 /**
- * Validates the Bearer JWT in Authorization header.
+ * Validates the Bearer JWT in Authorization header using Supabase's JWKS (ES256).
  * Attaches req.user = { id, role, phone } on success.
  * Calls next() with 401 AppError on failure.
  */
-export function authenticate(req: Request, _res: Response, next: NextFunction) {
+export async function authenticate(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return next(Errors.unauthorized());
@@ -17,17 +20,19 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
 
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, env.SUPABASE_JWT_SECRET) as JwtPayload;
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: `${env.SUPABASE_URL}/auth/v1`,
+    });
 
-    const role = payload.app_metadata?.role;
+    const role = (payload.app_metadata as any)?.role;
     if (!role) {
       return next(Errors.unauthorized('Token missing role claim'));
     }
 
     req.user = {
-      id: payload.sub,
+      id: payload.sub!,
       role,
-      phone: payload.phone,
+      phone: (payload as any).phone,
     };
 
     next();

@@ -1,5 +1,14 @@
+import { createClient } from '@supabase/supabase-js';
 import { getDb } from '../db/client.js';
+import { env } from '../lib/env.js';
 import { Errors } from '../lib/errors.js';
+
+// Creates a throwaway client for sign-in to avoid mutating the shared service-role singleton's auth state.
+function freshClient() {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
+}
 
 interface RegisterInput {
   full_name: string;
@@ -61,8 +70,7 @@ export class AuthService {
       email: emailAlias,
     });
 
-    // Fall back to sign-in to get a real session token
-    const { data: signIn, error: signInError } = await this.db.auth.signInWithPassword({
+    const { data: signIn, error: signInError } = await freshClient().auth.signInWithPassword({
       email: emailAlias,
       password: input.password,
     });
@@ -78,7 +86,7 @@ export class AuthService {
   async login(input: LoginInput) {
     const emailAlias = `${input.phone}@phone.lessa`;
 
-    const { data, error } = await this.db.auth.signInWithPassword({
+    const { data, error } = await freshClient().auth.signInWithPassword({
       email: emailAlias,
       password: input.password,
     });
