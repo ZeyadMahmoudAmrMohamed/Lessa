@@ -2,6 +2,8 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
+import swaggerJsdoc from 'swagger-jsdoc';
+import swaggerUi from 'swagger-ui-express';
 
 import { env } from './lib/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -28,6 +30,21 @@ export function createApp() {
   }));
   app.use(express.json({ limit: '1mb' }));
   app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+  // ─── Swagger ──────────────────────────────────────────────────────────────
+  const swaggerSpec = swaggerJsdoc({
+    definition: {
+      openapi: '3.0.0',
+      info: { title: 'Lessa? API', version: '1.0.0', description: 'Government Queue Platform API' },
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        },
+      },
+    },
+    apis: ['./src/routes/*.ts'],
+  });
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   app.use('/health', healthRouter);
