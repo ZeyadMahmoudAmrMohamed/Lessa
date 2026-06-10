@@ -11,7 +11,7 @@ export class StaffService {
   async getWindowQueue(windowId: string) {
     const { data: win, error: winErr } = await this.db
       .from('windows')
-      .select('id, number, status, services(name_ar, name_en), profiles(full_name)')
+      .select('id, number, status, service_id, services(name_ar, name_en), profiles(full_name)')
       .eq('id', windowId)
       .single();
 
@@ -29,7 +29,7 @@ export class StaffService {
     const { data: waiting } = await this.db
       .from('tickets')
       .select('id, queue_number, status, booked_at')
-      .eq('service_id', (win.services as { name_ar: string })?.name_ar ? (win as unknown as { service_id: string }).service_id : '')
+      .eq('service_id', win.service_id)
       .eq('status', 'waiting')
       .gte('booked_at', `${today}T00:00:00Z`)
       .order('queue_number', { ascending: true })
