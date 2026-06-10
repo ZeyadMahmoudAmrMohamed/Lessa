@@ -149,7 +149,7 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
           </button>
         )}
         <Link to={home} className="flex items-center gap-2">
-          <img src="/logo.svg" alt="Lessa?" className="h-9 w-9" />
+          <img src="/logo.png" alt="Lessa?" className="h-9 w-9 object-contain" />
           <span className="text-xl font-black text-[#1E3A5F]">
             {i18n.language === "ar" ? "لسّه؟" : "Lessa?"}
           </span>

@@ -35,7 +35,20 @@ function SupervisorDashboard() {
     queryKey: ["staff-list"],
     queryFn: getStaffList,
   });
-  const staffOptions = (staffData?.staff ?? []).map((s) => ({ id: s.id, name: s.full_name }));
+
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [assignFor, setAssignFor] = useState<string | null>(null);
+
+  // IDs of staff already assigned to any window (excluding the one being reassigned)
+  const assignedStaffIds = new Set(
+    (data?.windows ?? [])
+      .filter((w) => w.assigned_staff && w.id !== assignFor)
+      .map((w) => w.assigned_staff!.id),
+  );
+  const staffOptions = (staffData?.staff ?? [])
+    .filter((s) => !assignedStaffIds.has(s.id))
+    .map((s) => ({ id: s.id, name: s.full_name }));
+
   const toggle = useMutation({
     mutationFn: ({ id, status }: { id: string; status: "open" | "closed" }) =>
       setWindowStatus(id, status),
@@ -49,9 +62,6 @@ function SupervisorDashboard() {
       qc.invalidateQueries({ queryKey: ["supervisor-dashboard"] });
     },
   });
-
-  const [closingId, setClosingId] = useState<string | null>(null);
-  const [assignFor, setAssignFor] = useState<string | null>(null);
 
   return (
     <DashboardShell role="supervisor">
