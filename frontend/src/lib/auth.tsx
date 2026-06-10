@@ -36,7 +36,14 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const [, payload] = token.split(".");
     const padded = payload.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(padded));
+    // atob gives a binary string; re-encode each byte as %xx then URI-decode to get proper UTF-8
+    const json = decodeURIComponent(
+      atob(padded)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(""),
+    );
+    return JSON.parse(json);
   } catch {
     return null;
   }

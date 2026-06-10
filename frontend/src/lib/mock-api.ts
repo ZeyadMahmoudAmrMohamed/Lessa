@@ -178,6 +178,12 @@ export async function getDailySummary(date: string) {
   };
 }
 
+export async function getStaffList() {
+  return apiFetch<{ staff: { id: string; full_name: string; phone: string }[] }>(
+    "/api/supervisor/staff",
+  );
+}
+
 // ─── Admin ─────────────────────────────────────────────────────────────────
 
 export async function getAdminServices() {

@@ -38,6 +38,30 @@ router.get('/branch/dashboard', authenticate, authorize('supervisor', 'admin'), 
 
 /**
  * @openapi
+ * /api/supervisor/staff:
+ *   get:
+ *     summary: Supervisor — list all staff profiles for assignment
+ *     tags: [Supervisor]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.get('/staff', authenticate, authorize('supervisor', 'admin'), async (req, res, next) => {
+  try {
+    const { getDb } = await import('../db/client.js');
+    const db = getDb();
+    const { data, error } = await db
+      .from('profiles')
+      .select('id, full_name, phone')
+      .eq('role', 'staff')
+      .order('full_name');
+    if (error) return next(error);
+    res.json({ staff: data ?? [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @openapi
  * /api/supervisor/windows:
  *   post:
  *     summary: Supervisor — create a new window

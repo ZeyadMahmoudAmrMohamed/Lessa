@@ -5,7 +5,7 @@ import {
   getSupervisorDashboard,
   setWindowStatus,
   assignWindowStaff,
-  getAdminUsers,
+  getStaffList,
 } from "@/lib/mock-api";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -33,11 +33,9 @@ function SupervisorDashboard() {
   });
   const { data: staffData } = useQuery({
     queryKey: ["staff-list"],
-    queryFn: () => getAdminUsers("", 1),
+    queryFn: getStaffList,
   });
-  const staffOptions = ((staffData as any)?.users ?? [])
-    .filter((u: any) => u.role === "staff")
-    .map((u: any) => ({ id: u.id, name: u.full_name ?? u.name }));
+  const staffOptions = (staffData?.staff ?? []).map((s) => ({ id: s.id, name: s.full_name }));
   const toggle = useMutation({
     mutationFn: ({ id, status }: { id: string; status: "open" | "closed" }) =>
       setWindowStatus(id, status),
