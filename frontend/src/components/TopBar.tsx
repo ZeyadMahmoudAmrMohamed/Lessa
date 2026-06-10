@@ -34,7 +34,7 @@ function NotificationBell() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["notifications"],
-    queryFn: getNotifications,
+    queryFn: () => getNotifications(),
     refetchInterval: 15000,
   });
   const markAll = useMutation({

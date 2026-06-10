@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Role } from "./mock-data";
+import { apiFetch, ApiError } from "./api";
 
 export interface AuthUser {
   sub: string;
@@ -31,42 +32,41 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const MOCK_USERS: Record<string, { password: string; user: AuthUser }> = {
-  "01012345678": {
-    password: "pass1234",
-    user: { sub: "citizen-001", phone: "01012345678", role: "citizen", name: "أحمد محمود" },
-  },
-  "01098765432": {
-    password: "pass1234",
-    user: {
-      sub: "staff-001",
-      phone: "01098765432",
-      role: "staff",
-      name: "مريم علي",
-      window_id: "win-3",
-    },
-  },
-  "01555000001": {
-    password: "pass1234",
-    user: { sub: "sup-001", phone: "01555000001", role: "supervisor", name: "خالد إبراهيم" },
-  },
-  "01000000001": {
-    password: "pass1234",
-    user: { sub: "admin-001", phone: "01000000001", role: "admin", name: "System Admin" },
-  },
-};
-
-function encodeMockJwt(user: AuthUser): string {
-  const payload = btoa(JSON.stringify(user));
-  return `mock.${payload}.sig`;
-}
-
-function decodeMockJwt(token: string): AuthUser | null {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const [, payload] = token.split(".");
-    return JSON.parse(atob(payload)) as AuthUser;
+    const padded = payload.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(padded));
   } catch {
     return null;
+  }
+}
+
+function buildUser(
+  token: string,
+  fallback: { id: string; role: string; name: string },
+  windowId?: string,
+): AuthUser {
+  const payload = decodeJwtPayload(token);
+  const sub = (payload?.sub as string) ?? fallback.id;
+  const role = ((payload?.app_metadata as Record<string, unknown>)?.role as Role) ?? (fallback.role as Role);
+  const name =
+    ((payload?.user_metadata as Record<string, unknown>)?.full_name as string) ??
+    fallback.name;
+  const phone =
+    ((payload?.user_metadata as Record<string, unknown>)?.phone as string) ?? "";
+
+  return { sub, phone, role, name, window_id: windowId };
+}
+
+async function fetchStaffWindowId(token: string): Promise<string | undefined> {
+  try {
+    const data = await apiFetch<{ window: { id: string } | null }>(
+      "/api/staff/my-window",
+    );
+    return data.window?.id ?? undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -77,49 +77,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stored = localStorage.getItem("lessa_token");
     if (stored) {
-      const decoded = decodeMockJwt(stored);
-      if (decoded) {
+      const payload = decodeJwtPayload(stored);
+      if (payload) {
+        const role = (payload.app_metadata as Record<string, unknown>)
+          ?.role as Role;
+        const name =
+          ((payload.user_metadata as Record<string, unknown>)
+            ?.full_name as string) ?? "";
+        const phone =
+          ((payload.user_metadata as Record<string, unknown>)
+            ?.phone as string) ?? "";
+        const built: AuthUser = {
+          sub: payload.sub as string,
+          phone,
+          role,
+          name,
+        };
         setToken(stored);
-        setUser(decoded);
+        setUser(built);
+        // Restore window_id for staff from localStorage cache
+        const cachedWindowId = localStorage.getItem("lessa_window_id");
+        if (role === "staff" && cachedWindowId) {
+          setUser({ ...built, window_id: cachedWindowId });
+        }
       }
     }
   }, []);
 
   const login = useCallback(async (phone: string, password: string) => {
-    await new Promise((r) => setTimeout(r, 400));
-    const entry = MOCK_USERS[phone];
-    if (!entry || entry.password !== password) {
-      throw new Error("INVALID_CREDENTIALS");
-    }
-    const t = encodeMockJwt(entry.user);
+    const resp = await apiFetch<{ token: string; user: { id: string; role: string; name: string } }>(
+      "/api/auth/login",
+      { method: "POST", body: { phone, password }, auth: false },
+    );
+
+    const { token: t, user: u } = resp;
     localStorage.setItem("lessa_token", t);
     setToken(t);
-    setUser(entry.user);
-    return entry.user;
+
+    let windowId: string | undefined;
+    if (u.role === "staff") {
+      // Fetch assigned window before building user so window_id is ready
+      windowId = await fetchStaffWindowId(t);
+      if (windowId) localStorage.setItem("lessa_window_id", windowId);
+    }
+
+    const built = buildUser(t, u, windowId);
+    setUser(built);
+    return built;
   }, []);
 
   const register = useCallback(
     async (full_name: string, phone: string, password: string) => {
-      await new Promise((r) => setTimeout(r, 400));
-      if (MOCK_USERS[phone]) throw new Error("PHONE_ALREADY_EXISTS");
-      const newUser: AuthUser = {
-        sub: `citizen-${Date.now()}`,
-        phone,
-        role: "citizen",
-        name: full_name,
-      };
-      MOCK_USERS[phone] = { password, user: newUser };
-      const t = encodeMockJwt(newUser);
+      const resp = await apiFetch<{ token: string; user: { id: string; role: string; name: string } }>(
+        "/api/auth/register",
+        { method: "POST", body: { full_name, phone, password }, auth: false },
+      );
+
+      const { token: t, user: u } = resp;
       localStorage.setItem("lessa_token", t);
       setToken(t);
-      setUser(newUser);
-      return newUser;
+
+      const built = buildUser(t, u);
+      setUser(built);
+      return built;
     },
     [],
   );
 
   const logout = useCallback(() => {
     localStorage.removeItem("lessa_token");
+    localStorage.removeItem("lessa_window_id");
     setToken(null);
     setUser(null);
   }, []);

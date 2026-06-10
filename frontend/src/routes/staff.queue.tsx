@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getStaffQueue, callNextTicket, setTicketStatus } from "@/lib/mock-api";
+import { useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { TopBar } from "@/components/TopBar";
 import { SkeletonCard, StatusChip } from "@/components/ui-bits";
@@ -18,19 +19,27 @@ export const Route = createFileRoute("/staff/queue")({
 
 function StaffQueue() {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const windowId = user?.window_id ?? "";
   const qc = useQueryClient();
+
   const queueQuery = useQuery({
-    queryKey: ["staff-queue"],
-    queryFn: getStaffQueue,
+    queryKey: ["staff-queue", windowId],
+    queryFn: () => getStaffQueue(windowId),
     refetchInterval: 5000,
+    enabled: !!windowId,
   });
   const callNext = useMutation({
-    mutationFn: callNextTicket,
+    mutationFn: () => callNextTicket(windowId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["staff-queue"] }),
     onError: () => toast.error(t("queue_empty")),
   });
   const updateStatus = useMutation({
-    mutationFn: (s: "done" | "skipped" | "no_show") => setTicketStatus(s),
+    mutationFn: (s: "done" | "skipped" | "no_show") => {
+      const ticketId = queueQuery.data?.active_ticket?.id;
+      if (!ticketId) throw new Error("NO_ACTIVE");
+      return setTicketStatus(ticketId, s);
+    },
     onSuccess: (_d, s) => {
       toast.success(t(`status_${s}` as any));
       qc.invalidateQueries({ queryKey: ["staff-queue"] });
@@ -38,6 +47,19 @@ function StaffQueue() {
   });
 
   const data = queueQuery.data;
+
+  if (!windowId) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF7]">
+        <TopBar />
+        <main className="mx-auto max-w-5xl px-4 py-12 text-center">
+          <p className="text-lg font-semibold text-slate-500">
+            لم يتم تعيين شباك لك بعد
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] pb-28 md:pb-8">

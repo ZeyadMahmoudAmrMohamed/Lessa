@@ -35,7 +35,7 @@ function Reports() {
   const [end, setEnd] = useState("2026-06-09");
   const { data, isLoading } = useQuery({
     queryKey: ["admin-reports", start, end],
-    queryFn: getAdminReports,
+    queryFn: () => getAdminReports(start, end),
   });
 
   return (

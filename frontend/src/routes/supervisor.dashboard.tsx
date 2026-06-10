@@ -5,6 +5,7 @@ import {
   getSupervisorDashboard,
   setWindowStatus,
   assignWindowStaff,
+  getAdminUsers,
 } from "@/lib/mock-api";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { DashboardShell } from "@/components/DashboardShell";
@@ -22,12 +23,6 @@ export const Route = createFileRoute("/supervisor/dashboard")({
   ),
 });
 
-const STAFF_OPTIONS = [
-  { id: "staff-001", name: "مريم علي" },
-  { id: "staff-002", name: "كريم سالم" },
-  { id: "staff-003", name: "أحمد حسن" },
-];
-
 function SupervisorDashboard() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -36,6 +31,13 @@ function SupervisorDashboard() {
     queryFn: getSupervisorDashboard,
     refetchInterval: 10000,
   });
+  const { data: staffData } = useQuery({
+    queryKey: ["staff-list"],
+    queryFn: () => getAdminUsers("", 1),
+  });
+  const staffOptions = ((staffData as any)?.users ?? [])
+    .filter((u: any) => u.role === "staff")
+    .map((u: any) => ({ id: u.id, name: u.full_name ?? u.name }));
   const toggle = useMutation({
     mutationFn: ({ id, status }: { id: string; status: "open" | "closed" }) =>
       setWindowStatus(id, status),
@@ -158,7 +160,7 @@ function SupervisorDashboard() {
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-[#1E3A5F]">{t("assign_staff")}</h3>
             <ul className="mt-4 space-y-2">
-              {STAFF_OPTIONS.map((s) => (
+              {staffOptions.map((s: { id: string; name: string }) => (
                 <li key={s.id}>
                   <button
                     type="button"

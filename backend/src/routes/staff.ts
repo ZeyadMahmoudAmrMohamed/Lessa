@@ -8,6 +8,7 @@ import {
   callNext,
   updateTicketStatus,
 } from '../controllers/staff.controller.js';
+import { getDb } from '../db/client.js';
 
 const router = Router();
 
@@ -44,5 +45,27 @@ router.post('/window/:windowId/next', authenticate, authorize('staff', 'supervis
  *     security: [{ bearerAuth: [] }]
  */
 router.patch('/tickets/:id/status', authenticate, authorize('staff', 'supervisor', 'admin'), validate(ticketStatusSchema), updateTicketStatus);
+
+/**
+ * @openapi
+ * /api/staff/my-window:
+ *   get:
+ *     summary: Staff — get the window currently assigned to the authenticated staff member
+ *     tags: [Staff]
+ *     security: [{ bearerAuth: [] }]
+ */
+router.get('/my-window', authenticate, authorize('staff', 'supervisor', 'admin'), async (req, res, next) => {
+  try {
+    const db = getDb();
+    const { data } = await db
+      .from('windows')
+      .select('id, number, status, services(name_ar, name_en)')
+      .eq('assigned_staff_id', req.user.id)
+      .maybeSingle();
+    res.json({ window: data ?? null });
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;
