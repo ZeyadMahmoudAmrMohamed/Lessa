@@ -9,7 +9,7 @@ export class SupervisorService {
     const { data: windows, error } = await this.db
       .from('windows')
       .select(`
-        id, number, status,
+        id, number, status, service_id,
         services(name_ar, name_en),
         profiles!assigned_staff_id(id, full_name)
       `)
@@ -29,6 +29,13 @@ export class SupervisorService {
           .eq('status', 'done')
           .gte('completed_at', `${today}T00:00:00Z`);
 
+        const { count: queueSize } = await this.db
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('service_id', (w as any).service_id)
+          .eq('status', 'waiting')
+          .gte('booked_at', `${today}T00:00:00Z`);
+
         const staff = w.profiles as { id: string; full_name: string } | null;
 
         return {
@@ -38,7 +45,7 @@ export class SupervisorService {
           assigned_staff: staff ? { id: staff.id, name: staff.full_name } : null,
           service: w.services,
           tickets_served_today: served ?? 0,
-          current_queue_size: 0, // populated below
+          current_queue_size: queueSize ?? 0,
         };
       }),
     );

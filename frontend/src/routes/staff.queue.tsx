@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getStaffQueue, callNextTicket, setTicketStatus } from "@/lib/mock-api";
+import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { TopBar } from "@/components/TopBar";
@@ -20,8 +21,15 @@ export const Route = createFileRoute("/staff/queue")({
 function StaffQueue() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const windowId = user?.window_id ?? "";
   const qc = useQueryClient();
+
+  // Poll my-window every 10s so staff see their queue even if assigned after login
+  const windowQuery = useQuery({
+    queryKey: ["my-window"],
+    queryFn: () => apiFetch<{ window: { id: string; number: number } | null }>("/api/staff/my-window"),
+    refetchInterval: 10000,
+  });
+  const windowId = windowQuery.data?.window?.id ?? user?.window_id ?? "";
 
   const queueQuery = useQuery({
     queryKey: ["staff-queue", windowId],
