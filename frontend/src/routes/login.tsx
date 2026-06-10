@@ -49,7 +49,7 @@ function LoginPage() {
           <LanguageToggle />
         </div>
         <Link to="/" className="mb-8 flex items-center gap-2">
-          <img src="/logo.svg" alt="" className="h-12 w-12" />
+          <img src="/logo.png" alt="" className="h-12 w-12" />
           <span className="text-2xl font-black text-[#1E3A5F]">لسّه؟</span>
         </Link>
         <div className="w-full rounded-2xl border border-slate-100 bg-white p-8 shadow-sm">
